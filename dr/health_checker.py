@@ -29,13 +29,83 @@ URL = {"a": "http://127.0.0.1:8001", "b": "http://127.0.0.1:8002"}
 
 
 def probe(region: str, timeout: float) -> tuple[bool, str]:
-    """TODO: trả về (ready, reason). Timeout PHẢI có — netblock làm request treo mãi."""
-    raise NotImplementedError
+    """Kiểm tra readiness của region và trả về ``(ready, reason)``."""
+    try:
+        response = httpx.get(f"{URL[region]}/readyz", timeout=timeout)
+    except httpx.TimeoutException as exc:
+        return False, f"timeout:{type(exc).__name__}"
+    except httpx.HTTPError as exc:
+        return False, f"http_error:{type(exc).__name__}"
+
+    if response.status_code == 200:
+        return True, "ready"
+
+    try:
+        body = response.json()
+        reasons = body.get("reasons") or [body.get("error")]
+        detail = ",".join(str(reason) for reason in reasons if reason)
+    except (ValueError, AttributeError):
+        detail = ""
+    reason = f"status={response.status_code}"
+    return False, f"{reason}:{detail}" if detail else reason
 
 
 def run(interval: float, timeout: float, threshold: int, duration: float, out: pathlib.Path):
-    """TODO: vòng lặp poll + phát hiện transition + ghi JSONL."""
-    raise NotImplementedError
+    """Poll hai region, phát hiện transition và ghi event dạng JSONL."""
+    if interval <= 0:
+        raise ValueError("interval must be greater than zero")
+    if timeout <= 0:
+        raise ValueError("timeout must be greater than zero")
+    if threshold < 1:
+        raise ValueError("threshold must be at least one")
+    if duration < 0:
+        raise ValueError("duration cannot be negative")
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    states = {region: "HEALTHY" for region in URL}
+    consecutive_fails = {region: 0 for region in URL}
+    deadline = time.monotonic() + duration
+
+    with out.open("a", encoding="utf-8") as log:
+        while time.monotonic() < deadline:
+            cycle_started = time.monotonic()
+            for region in URL:
+                ready, reason = probe(region, timeout)
+                previous = states[region]
+
+                if ready:
+                    consecutive_fails[region] = 0
+                    current = "HEALTHY"
+                else:
+                    consecutive_fails[region] += 1
+                    current = (
+                        "UNHEALTHY"
+                        if consecutive_fails[region] >= threshold
+                        else previous
+                    )
+
+                if current != previous:
+                    states[region] = current
+                    now = time.time()
+                    record = {
+                        "ts": now,
+                        "iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now)),
+                        "event": "state_change",
+                        "region": region,
+                        "to": current,
+                        "reason": reason,
+                        "consecutive_fails": consecutive_fails[region],
+                        "interval_s": interval,
+                        "threshold": threshold,
+                    }
+                    log.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    log.flush()
+                    print("HEALTH", json.dumps(record, ensure_ascii=False))
+
+            remaining = deadline - time.monotonic()
+            sleep_for = interval - (time.monotonic() - cycle_started)
+            if remaining > 0 and sleep_for > 0:
+                time.sleep(min(sleep_for, remaining))
 
 
 if __name__ == "__main__":

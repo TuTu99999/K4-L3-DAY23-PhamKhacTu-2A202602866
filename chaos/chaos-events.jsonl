@@ -1,0 +1,3 @@
+{"ts": 1791640379.2998111, "iso": "2026-10-10T13:52:59", "action": "kill", "region": "a", "mode": "stop", "backend": "bare-windows", "mock": true, "other_region": "b", "other_alive": true, "forced_both": false, "note": "t_outage_start - Windows Stop-Process equivalent"}
+{"ts": 1791640446.8226511, "iso": "2026-10-10T13:54:06", "action": "restore", "region": "a", "method": "need_manual_start", "note": "process da bi SIGKILL, chay `make up-bare` lai"}
+{"ts": 1791641308.088803, "iso": "2026-10-10T14:08:28", "action": "kill", "region": "a", "mode": "stop", "backend": "bare-windows", "mock": true, "other_region": "b", "other_alive": true, "forced_both": false, "note": "t_outage_start - Windows Stop-Process equivalent"}
